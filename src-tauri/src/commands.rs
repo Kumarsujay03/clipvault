@@ -1,0 +1,364 @@
+//! Typed commands exposed to the panel. Inputs are validated here; the frontend never gets
+//! filesystem, shell or network access, and never sees media paths.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, State};
+
+use clipvault_core::autostart;
+use clipvault_core::capture::CaptureStatus;
+use clipvault_core::desktop::{self, ShortcutStatus};
+use clipvault_core::error::{AppError, AppResult};
+use clipvault_core::export::{self, BackupInfo, ImportReport};
+use clipvault_core::ipc::{self, DaemonStatus, Request};
+use clipvault_core::model::{Counts, ItemDetail, ListQuery, Page};
+use clipvault_core::settings::Settings;
+
+use crate::app::{self, AppState};
+
+type St<'a> = State<'a, Arc<AppState>>;
+
+/// Run blocking work (SQLite, file I/O, subprocesses) off the async runtime's core threads.
+async fn blocking<T: Send + 'static>(
+    state: &St<'_>,
+    f: impl FnOnce(&AppState) -> AppResult<T> + Send + 'static,
+) -> AppResult<T> {
+    let s = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || f(&s))
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?
+}
+
+fn valid_id(id: i64) -> AppResult<i64> {
+    if id <= 0 {
+        return Err(AppError::Invalid("invalid item id".into()));
+    }
+    Ok(id)
+}
+
+fn daemon(req: Request) -> AppResult<serde_json::Value> {
+    ipc::request(&req, Duration::from_secs(6)).map_err(AppError::Clipboard)
+}
+
+fn changed(app: &AppHandle) {
+    let _ = app.emit("history-changed", ());
+}
+
+#[tauri::command]
+pub async fn panel_ready(app: AppHandle) -> AppResult<()> {
+    let a = app.clone();
+    app.run_on_main_thread(move || app::show_panel(&a))
+        .map_err(|e| AppError::Other(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn list_items(state: St<'_>, query: ListQuery) -> AppResult<Page> {
+    if query.search.as_deref().map(str::len).unwrap_or(0) > 1024 {
+        return Err(AppError::Invalid("search query too long".into()));
+    }
+    blocking(&state, move |s| s.store.list(&query)).await
+}
+
+#[tauri::command]
+pub async fn get_item(state: St<'_>, id: i64) -> AppResult<ItemDetail> {
+    let id = valid_id(id)?;
+    blocking(&state, move |s| s.store.get(id)).await
+}
+
+#[tauri::command]
+pub async fn get_counts(state: St<'_>) -> AppResult<Counts> {
+    blocking(&state, |s| s.store.counts()).await
+}
+
+#[derive(Serialize)]
+pub struct TagCount {
+    name: String,
+    count: i64,
+}
+
+#[tauri::command]
+pub async fn all_tags(state: St<'_>) -> AppResult<Vec<TagCount>> {
+    blocking(&state, |s| {
+        Ok(s.store
+            .all_tags()?
+            .into_iter()
+            .map(|(name, count)| TagCount { name, count })
+            .collect())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_pinned(app: AppHandle, state: St<'_>, id: i64, pinned: bool) -> AppResult<()> {
+    let id = valid_id(id)?;
+    blocking(&state, move |s| s.store.set_pinned(id, pinned)).await?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_favorite(app: AppHandle, state: St<'_>, id: i64, favorite: bool) -> AppResult<()> {
+    let id = valid_id(id)?;
+    blocking(&state, move |s| s.store.set_favorite(id, favorite)).await?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_tags(
+    app: AppHandle,
+    state: St<'_>,
+    id: i64,
+    tags: Vec<String>,
+) -> AppResult<Vec<String>> {
+    let id = valid_id(id)?;
+    if tags.len() > 50 || tags.iter().any(|t| t.len() > 100) {
+        return Err(AppError::Invalid("too many or too long tags".into()));
+    }
+    let saved = blocking(&state, move |s| s.store.set_tags(id, &tags)).await?;
+    changed(&app);
+    Ok(saved)
+}
+
+/// Removes the history entry and its cached media. Original files referenced by file
+/// entries are never touched.
+#[tauri::command]
+pub async fn delete_item(app: AppHandle, state: St<'_>, id: i64) -> AppResult<()> {
+    let id = valid_id(id)?;
+    blocking(&state, move |s| {
+        let orphans = s.store.delete(id)?;
+        s.media.remove(&orphans);
+        Ok(())
+    })
+    .await?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn clear_history(app: AppHandle, state: St<'_>, include_pinned: bool) -> AppResult<()> {
+    blocking(&state, move |s| {
+        let orphans = s.store.clear(include_pinned)?;
+        s.media.remove(&orphans);
+        Ok(())
+    })
+    .await?;
+    changed(&app);
+    Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyResult {
+    /// The item was pasted into the previous window (GNOME extension present).
+    pasted: bool,
+    hidden: bool,
+}
+
+/// Put an item on the clipboard (the daemon owns it, so it stays pasteable after the panel
+/// unloads). With `paste` and the GNOME extension active, also paste it into the window that
+/// was focused before the panel opened.
+#[tauri::command]
+pub async fn copy_item(
+    app: AppHandle,
+    state: St<'_>,
+    id: i64,
+    paste: bool,
+) -> AppResult<CopyResult> {
+    let id = valid_id(id)?;
+    let settings = state.settings();
+    blocking(&state, move |_| daemon(Request::Restore { id }).map(|_| ())).await?;
+    let want_paste = paste && settings.paste_on_select;
+    let hide = want_paste || settings.close_on_copy;
+    if hide {
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || app::hide_panel(&a));
+    }
+    let pasted = if want_paste {
+        blocking(&state, |_| Ok(desktop::request_paste().is_ok())).await?
+    } else {
+        false
+    };
+    Ok(CopyResult {
+        pasted,
+        hidden: hide,
+    })
+}
+
+#[tauri::command]
+pub async fn get_settings(state: St<'_>) -> AppResult<Settings> {
+    Ok(state.settings())
+}
+
+#[tauri::command]
+pub async fn update_settings(
+    app: AppHandle,
+    state: St<'_>,
+    settings: Settings,
+) -> AppResult<Settings> {
+    settings.validate()?;
+    let saved = blocking(&state, move |s| {
+        let old = s.settings();
+        settings.save(&s.paths)?;
+        *s.settings.write().unwrap() = settings.clone();
+        // The daemon applies capture, retention, tray and autostart changes.
+        if ipc::request(&Request::ReloadSettings, Duration::from_secs(5)).is_err() {
+            let _ = autostart::sync(&s.paths, settings.start_at_login);
+        }
+        if old.shortcut != settings.shortcut && desktop::shortcut_status(&s.paths).method == "gnome"
+        {
+            let _ = desktop::setup_shortcut(&s.paths, &settings.shortcut);
+        }
+        Ok(settings)
+    })
+    .await?;
+    changed(&app);
+    Ok(saved)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbStatus {
+    pub ok: bool,
+    pub error: Option<String>,
+    pub path: String,
+    pub items: i64,
+    pub media_bytes: i64,
+    pub disk_bytes: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppStatus {
+    pub capture: Option<CaptureStatus>,
+    pub daemon: Option<DaemonStatus>,
+    pub db: DbStatus,
+    pub data_dir: String,
+    pub config_dir: String,
+    pub backup_dir: String,
+    pub version: String,
+    pub warnings: Vec<String>,
+    pub autostart: bool,
+    pub isolated: bool,
+}
+
+#[tauri::command]
+pub async fn get_status(state: St<'_>) -> AppResult<AppStatus> {
+    blocking(&state, |s| {
+        let (ok, error, stats) = match s.store.stats() {
+            Ok(st) => (true, None, st),
+            Err(e) => (false, Some(e.to_string()), Default::default()),
+        };
+        let daemon: Option<DaemonStatus> = ipc::request(&Request::Status, Duration::from_secs(2))
+            .ok()
+            .and_then(|v| serde_json::from_value(v).ok());
+        Ok(AppStatus {
+            capture: daemon
+                .as_ref()
+                .map(|d| d.capture.clone())
+                .or_else(|| s.capture.read().unwrap().clone()),
+            daemon,
+            db: DbStatus {
+                ok,
+                error,
+                path: s.paths.db_path().display().to_string(),
+                items: stats.items,
+                media_bytes: stats.media_bytes,
+                disk_bytes: s.media.disk_usage(),
+            },
+            data_dir: s.paths.data_dir.display().to_string(),
+            config_dir: s.paths.config_dir.display().to_string(),
+            backup_dir: export::backup_dir().display().to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            warnings: s.warnings.clone(),
+            autostart: autostart::is_enabled(),
+            isolated: s.paths.isolated,
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_shortcut_status(state: St<'_>) -> AppResult<ShortcutStatus> {
+    blocking(&state, |s| Ok(desktop::shortcut_status(&s.paths))).await
+}
+
+#[tauri::command]
+pub async fn set_paused(state: St<'_>, paused: bool) -> AppResult<CaptureStatus> {
+    let v = blocking(&state, move |_| daemon(Request::SetPaused { paused })).await?;
+    serde_json::from_value(v).map_err(|e| AppError::Other(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn start_service(state: St<'_>) -> AppResult<bool> {
+    blocking(&state, |_| Ok(app::ensure_daemon())).await
+}
+
+#[tauri::command]
+pub async fn hide_window(app: AppHandle) -> AppResult<()> {
+    let a = app.clone();
+    app.run_on_main_thread(move || app::hide_panel(&a))
+        .map_err(|e| AppError::Other(e.to_string()))
+}
+
+/// Stop ClipVault entirely (capture service and panel).
+#[tauri::command]
+pub async fn quit_app(app: AppHandle) -> AppResult<()> {
+    let _ = ipc::request(&Request::Quit, Duration::from_secs(2));
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn setup_shortcut(state: St<'_>) -> AppResult<ShortcutStatus> {
+    blocking(&state, |s| {
+        desktop::setup_shortcut(&s.paths, &s.settings().shortcut).map_err(AppError::Other)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn remove_shortcut(state: St<'_>) -> AppResult<ShortcutStatus> {
+    blocking(&state, |s| {
+        desktop::remove_shortcut(&s.paths).map_err(AppError::Other)?;
+        Ok(desktop::shortcut_status(&s.paths))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn install_extension(state: St<'_>) -> AppResult<String> {
+    blocking(&state, |s| {
+        let r = desktop::install_extension(&s.paths).map_err(AppError::Other);
+        desktop::write_launcher_info(&s.paths);
+        r
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn export_history(state: St<'_>, include_images: bool) -> AppResult<String> {
+    blocking(&state, move |s| {
+        Ok(export::export(&s.store, &s.media, include_images)?
+            .display()
+            .to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn list_backups(state: St<'_>) -> AppResult<Vec<BackupInfo>> {
+    blocking(&state, |_| export::list()).await
+}
+
+#[tauri::command]
+pub async fn import_backup(app: AppHandle, state: St<'_>, name: String) -> AppResult<ImportReport> {
+    let r = blocking(&state, move |s| {
+        export::import(&s.store, &s.media, &s.settings(), &name)
+    })
+    .await?;
+    changed(&app);
+    Ok(r)
+}

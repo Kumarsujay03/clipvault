@@ -1,0 +1,36 @@
+[package]
+name = "clipvault-core"
+version = "0.1.0"
+description = "ClipVault clipboard engine and background daemon (no GUI toolkit)"
+authors = ["Sujay Kumar"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/Kumarsujay03/clipvault"
+homepage = "https://github.com/Kumarsujay03/clipvault"
+rust-version = "1.80"
+
+[lib]
+name = "clipvault_core"
+
+[[bin]]
+name = "clipvaultd"
+path = "src/bin/clipvaultd.rs"
+
+[dependencies]
+base64 = "0.23.1"
+dirs = "7.0.0"
+env_logger = "0.11.11"
+image = { version = "0.25.6", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }
+ksni = { version = "0.3.6", default-features = false, features = ["blocking", "async-io"] }
+libc = "0.2.190"
+log = "0.4.34"
+regex = "1.13.1"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.10.9"
+thiserror = "2.0.21"
+x11rb = { version = "0.14.0", features = ["xfixes"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

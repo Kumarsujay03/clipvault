@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ClipVault",
+  "version": "0.1.0",
+  "identifier": "dev.clipvault.ClipVault",
+  "build": {
+    "beforeDevCommand": "node scripts/build-daemon.mjs debug && npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "node scripts/build-daemon.mjs release && npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "ClipVault",
+        "width": 380,
+        "height": 540,
+        "minWidth": 320,
+        "minHeight": 380,
+        "visible": false,
+        "center": true,
+        "decorations": false,
+        "transparent": true,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "focus": true,
+        "shadow": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' cvmedia: http://cvmedia.localhost data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'",
+      "freezePrototype": true
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "deb",
+      "appimage"
+    ],
+    "category": "Utility",
+    "shortDescription": "Private, searchable clipboard history",
+    "longDescription": "ClipVault keeps a local, searchable history of text, code, images and files you copy. Everything stays on your computer.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ],
+    "externalBin": [
+      "binaries/clipvaultd"
+    ],
+    "linux": {
+      "deb": {
+        "section": "utils",
+        "priority": "optional"
+      }
+    },
+    "homepage": "https://github.com/Kumarsujay03/clipvault",
+    "publisher": "Sujay Kumar",
+    "copyright": "\u00a9 2026 Sujay Kumar. MIT License.",
+    "license": "MIT"
+  }
+}
