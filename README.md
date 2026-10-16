@@ -1,5 +1,7 @@
 # ClipVault
 
+<p align="center"><img src="docs/banner.png" alt="ClipVault: Windows-style clipboard history for Ubuntu" width="100%"></p>
+
 Windows-style clipboard history for Ubuntu: press **Super+V**, pick an item, and it's pasted. It runs on GNOME 50 / Wayland (X11 too) and stays private: everything lives on your computer.
 
 [![CI](https://github.com/Kumarsujay03/clipvault/actions/workflows/ci.yml/badge.svg)](https://github.com/Kumarsujay03/clipvault/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
