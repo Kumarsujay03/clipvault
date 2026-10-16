@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Main window: events and app commands only. No filesystem, shell or HTTP access.",
   "windows": ["main"],
-  "permissions": ["core:event:default", "core:app:default", "core:window:allow-start-dragging"]
+  "permissions": ["core:event:default", "core:app:default"]
 }

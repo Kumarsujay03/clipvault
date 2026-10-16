@@ -89,12 +89,17 @@ pub fn daemon_exec() -> Option<String> {
 }
 
 /// Start a detached process (used to launch the daemon from the UI and the UI from the tray).
+/// The child gets no terminal: no inherited output and its own process group, so a
+/// service started from `clipvault --update` in a terminal neither writes into it nor dies
+/// with it.
 pub fn spawn_detached(argv: &[String]) -> std::io::Result<()> {
+    use std::os::unix::process::CommandExt;
     let mut child = Command::new(&argv[0])
         .args(&argv[1..])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::null())
+        .process_group(0)
         .spawn()?;
     // Reap the child when it exits so it never lingers as a zombie.
     std::thread::spawn(move || {
@@ -419,6 +424,29 @@ pub fn extension_state() -> String {
 
 /// Install the bundled extension for this user and enable it. GNOME on Wayland loads newly
 /// installed extensions at the next login.
+/// Keep an installed extension in step with the one bundled in this version. Only rewrites
+/// files that differ; GNOME on Wayland picks the new code up at the next login.
+pub fn refresh_extension(paths: &Paths) {
+    if paths.isolated || running_from_build_dir() {
+        return;
+    }
+    let Some(dir) = extension_dir() else { return };
+    if !dir.join("metadata.json").exists() {
+        return;
+    }
+    for (name, contents) in [
+        ("extension.js", EXTENSION_JS),
+        ("metadata.json", EXTENSION_META),
+    ] {
+        let path = dir.join(name);
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(contents)
+            && std::fs::write(&path, contents).is_ok()
+        {
+            log::info!("updated GNOME extension file {name}; active after the next login");
+        }
+    }
+}
+
 pub fn install_extension(paths: &Paths) -> Result<String, String> {
     if paths.isolated {
         return Err("desktop integration is disabled for isolated test profiles".into());

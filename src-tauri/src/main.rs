@@ -18,6 +18,8 @@ Usage: clipvault [OPTION]
   --quit               stop ClipVault completely
   --setup              enable start at login, the keyboard shortcut and the GNOME extension
   --remove-integration undo --setup (history is kept)
+  --update [--yes]     check GitHub for a new version and install it
+  --restart            restart the background capture service
   --version";
 
 fn main() {
@@ -42,6 +44,28 @@ fn main() {
             _ => eprintln!("clipvault: clipvaultd not found next to clipvault"),
         }
         std::process::exit(1);
+    }
+    // Relaunch after an update: wait for the old panel process to exit first.
+    if let Some(pid) = args.iter().find_map(|a| a.strip_prefix("--wait-pid=")) {
+        let proc_dir = std::path::PathBuf::from(format!("/proc/{pid}"));
+        for _ in 0..100 {
+            if !proc_dir.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    if has("--restart") {
+        if clipvault_lib::update::restart_service() {
+            println!("ClipVault capture service restarted.");
+        } else {
+            eprintln!("clipvault: could not start the capture service");
+            std::process::exit(1);
+        }
+        return;
+    }
+    if has("--update") {
+        std::process::exit(cli_update(has("--yes")));
     }
     if has("--quit") {
         let _ = ipc::request(&ipc::Request::Quit, std::time::Duration::from_secs(2));
@@ -92,4 +116,63 @@ fn main() {
         return;
     }
     clipvault_lib::run();
+}
+
+fn cli_update(yes: bool) -> i32 {
+    use clipvault_lib::update;
+    use std::io::{BufRead, IsTerminal, Write};
+    let paths = match Paths::from_env() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("clipvault: {e}");
+            return 1;
+        }
+    };
+    let info = match update::check(&paths) {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("clipvault: {e}");
+            return 1;
+        }
+    };
+    if !info.available {
+        println!(
+            "ClipVault {} is up to date (latest release: {}).",
+            info.current, info.latest
+        );
+        return 0;
+    }
+    println!(
+        "ClipVault {} is available (you have {}).\n{}\n",
+        info.latest, info.current, info.url
+    );
+    if !yes {
+        if !std::io::stdin().is_terminal() {
+            eprintln!("Run `clipvault --update --yes` to install it.");
+            return 2;
+        }
+        print!("Install it now? [y/N] ");
+        let _ = std::io::stdout().flush();
+        let mut answer = String::new();
+        let _ = std::io::stdin().lock().read_line(&mut answer);
+        if !answer.trim().eq_ignore_ascii_case("y") {
+            return 0;
+        }
+    }
+    match update::install(&paths, &|m: String| println!("{m}")) {
+        Ok(msg) => {
+            println!("{msg}");
+            if msg.starts_with("Updated") {
+                ipc::send_ui("quit");
+                if update::restart_service() {
+                    println!("Capture service restarted. Press Super+V to open the new version.");
+                }
+            }
+            0
+        }
+        Err(e) => {
+            eprintln!("clipvault: {e}");
+            1
+        }
+    }
 }

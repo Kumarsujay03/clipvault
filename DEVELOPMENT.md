@@ -56,9 +56,19 @@ npm run tauri build               # release .deb + AppImage (clipvaultd bundled 
 
 Logging uses `RUST_LOG` (default `clipvault_core=info`). Never log clipboard contents: log sizes, MIME types and reasons only.
 
+## Releasing a new version
+
+1. Bump the version in `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `src-tauri/core/Cargo.toml`.
+2. Add a section to `CHANGELOG.md`; its text becomes the release notes.
+3. Commit, then tag and push: `git tag v0.3.0 && git push origin main v0.3.0`.
+4. The **Release** workflow builds the `.deb` and AppImage on Ubuntu 24.04, writes `SHA256SUMS` and publishes the GitHub release. Installed copies then see it under Settings → Updates and through `clipvault --update`.
+
+To test the update flow locally, pretend to be an older version: `CLIPVAULT_FAKE_VERSION=0.0.1 clipvault --update`.
+
 ## Design notes
 
 - **Two processes.** `clipvaultd` is always on, small, and links no GTK/WebKit (check with `ldd`). The panel is on demand. They share the SQLite database (WAL mode). The panel reads and writes history directly. Only clipboard ownership (restore), pause and settings reloads go through IPC, and the daemon pushes events (`history_changed`, `status`, `skipped`) to the panel.
+- **Updates.** `src-tauri/src/update.rs` (panel process only) talks to GitHub, verifies `SHA256SUMS` and installs through `pkexec apt-get` or by replacing the AppImage. The daemon watches `/proc/self/exe`; when a package upgrade deletes its binary it re-execs the new one.
 - **Panel lifecycle.** The panel shows when the frontend calls `panel_ready` (1.5 s fallback), hides on Esc, close or blur, and calls `exit(0)` after `panel_keep_alive_secs` hidden. `clipvault --toggle` writes `toggle` to `$XDG_RUNTIME_DIR/clipvault/ui.sock` and exits in milliseconds if a panel is running.
 - **Memory.** After image ingestion and restores the daemon calls `malloc_trim(0)`, so a 4K screenshot doesn't leave tens of MB resident.
 - **Migrations.** Append to `MIGRATIONS` in `core/src/store/migrations.rs`; never edit released ones. Migration 2 shows how to rebuild the FTS index.

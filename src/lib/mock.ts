@@ -25,6 +25,7 @@ export const defaultSettings: Settings = {
   hide_on_blur: true,
   paste_on_select: true,
   ocr_images: false,
+  check_updates: false,
 };
 
 const DEMO_IMAGE =
@@ -120,6 +121,7 @@ export function createMockApi(seed: ItemDetail[] = demoItems()): Api {
   return {
     preview: true,
     async panelReady() {},
+    async startMove() {},
     async listItems(q: ListQuery) {
       const terms = (q.search ?? "").toLowerCase().split(/\s+/).filter(Boolean);
       let rows = items.filter((i) => {
@@ -215,6 +217,12 @@ export function createMockApi(seed: ItemDetail[] = demoItems()): Api {
     async installExtension() {
       shortcut = { ...shortcut, extension: "pending_login" };
       return "pending_login";
+    },
+    async checkUpdate() {
+      return { current: "preview", latest: "preview", available: false, notes: "", url: "", publishedAt: "", installKind: "manual", assetSize: null };
+    },
+    async installUpdate() {
+      return "Updates are not available in preview mode.";
     },
     async exportHistory() {
       return "(preview)/clipvault-demo.json";

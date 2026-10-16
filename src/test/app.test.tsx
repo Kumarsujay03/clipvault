@@ -115,6 +115,21 @@ describe("Clipboard panel (preview backend)", () => {
   });
 });
 
+describe("dragging the panel", () => {
+  it("starts a window move from the title strip but not from its buttons", async () => {
+    await renderApp();
+    const { api } = await import("../lib/api");
+    const spy = vi.spyOn(api, "startMove");
+    const { fireEvent } = await import("@testing-library/react");
+    const strip = screen.getAllByTitle("Clipboard")[0];
+    fireEvent.mouseDown(strip, { button: 0 });
+    expect(spy).toHaveBeenCalledTimes(1);
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Settings" }), { button: 0 });
+    fireEvent.mouseDown(strip, { button: 2 });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("rich text", () => {
   it("strips scripts, handlers and remote resources", () => {
     const out = sanitizeHtml(

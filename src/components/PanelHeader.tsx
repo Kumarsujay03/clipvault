@@ -106,8 +106,17 @@ export function PanelHeader({ onClearAll }: { onClearAll: () => void }) {
 /** The top strip: drag handle in the middle, buttons + close on the right. */
 export function TitleBar({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
-    <div data-tauri-drag-region className="relative flex h-9 items-center justify-end gap-0.5 px-2" title={title}>
-      <div data-tauri-drag-region className="absolute left-1/2 top-2 h-1 w-9 -translate-x-1/2 rounded-full bg-muted/40" />
+    <div
+      className="relative flex h-9 cursor-grab items-center justify-end gap-0.5 px-2 active:cursor-grabbing"
+      title={title}
+      onMouseDown={(e) => {
+        // Drag anywhere on the strip except its buttons.
+        if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+        e.preventDefault();
+        void api.startMove();
+      }}
+    >
+      <div className="pointer-events-none absolute left-1/2 top-2 h-1 w-9 -translate-x-1/2 rounded-full bg-muted/40" />
       {children}
       <IconButton label="Close" onClick={() => void api.hideWindow()}>
         <X className="h-4 w-4" />

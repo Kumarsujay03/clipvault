@@ -76,6 +76,18 @@ export interface Settings {
   hide_on_blur: boolean;
   paste_on_select: boolean;
   ocr_images: boolean;
+  check_updates: boolean;
+}
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  available: boolean;
+  notes: string;
+  url: string;
+  publishedAt: string;
+  installKind: "deb" | "appimage" | "manual";
+  assetSize: number | null;
 }
 
 export type BackendState = "starting" | "running" | "error" | "unavailable" | "stopped";
@@ -156,4 +168,5 @@ export type AppEvent =
   | "capture-skipped"
   | "backend-error"
   | "panel-shown"
-  | "panel-hidden";
+  | "panel-hidden"
+  | "update-progress";

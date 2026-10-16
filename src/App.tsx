@@ -138,6 +138,21 @@ function ServiceBanner() {
   );
 }
 
+function UpdateBanner() {
+  const update = useApp((s) => s.update);
+  const openView = useApp((s) => s.openView);
+  if (!update?.available) return null;
+  return (
+    <button
+      onClick={() => openView("settings")}
+      className="mx-3 mb-2 flex items-center justify-between rounded-md bg-accent-soft px-2.5 py-1.5 text-left text-[11.5px] text-accent hover:opacity-90"
+    >
+      <span>ClipVault {update.latest} is available</span>
+      <span className="font-semibold">Update</span>
+    </button>
+  );
+}
+
 export default function App() {
   const init = useApp((s) => s.init);
   const view = useApp((s) => s.view);
@@ -170,6 +185,7 @@ export default function App() {
           <>
             <PanelHeader onClearAll={() => setConfirmClear(true)} />
             <ServiceBanner />
+            <UpdateBanner />
             {warnings.map((w) => (
               <p key={w} role="alert" className="mx-3 mb-2 rounded-md bg-warn/15 px-2.5 py-1.5 text-[11.5px] text-warn">
                 {w}
