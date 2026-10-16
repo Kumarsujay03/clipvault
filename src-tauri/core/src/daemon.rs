@@ -301,6 +301,42 @@ fn run_ocr(d: &Daemon, id: i64) {
     }
 }
 
+/// After a package upgrade replaces `clipvaultd` on disk, restart onto the new binary so
+/// users never keep running an old version until their next login.
+fn spawn_upgrade_watcher(d: Arc<Daemon>) {
+    std::thread::Builder::new()
+        .name("upgrade-watch".into())
+        .spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(20));
+            let Ok(link) = std::fs::read_link("/proc/self/exe") else {
+                continue;
+            };
+            let s = link.to_string_lossy();
+            let Some(path) = s.strip_suffix(" (deleted)") else {
+                continue;
+            };
+            let path = std::path::PathBuf::from(path);
+            if !path.is_file() {
+                continue;
+            }
+            // Let the package manager finish writing files.
+            std::thread::sleep(Duration::from_secs(3));
+            log::info!("ClipVault was upgraded; restarting the capture service");
+            if let Some(c) = d.capture.get() {
+                c.shutdown();
+            }
+            if let Some(h) = d.tray.lock().unwrap().take() {
+                h.shutdown().wait();
+            }
+            let _ = std::fs::remove_file(ipc::daemon_socket());
+            use std::os::unix::process::CommandExt;
+            let err = std::process::Command::new(&path).exec();
+            log::error!("could not restart after upgrade: {err}");
+            std::process::exit(1);
+        })
+        .expect("spawn upgrade watcher");
+}
+
 fn spawn_maintenance(d: Arc<Daemon>) {
     std::thread::Builder::new()
         .name("maintenance".into())
@@ -424,6 +460,8 @@ pub fn run() -> Result<(), String> {
 
     spawn_ingest_worker(d.clone(), cap_rx);
     spawn_maintenance(d.clone());
+    spawn_upgrade_watcher(d.clone());
+    desktop::refresh_extension(&d.paths);
     d.set_tray_visible(settings.show_tray_icon);
     if let Err(e) = autostart::sync(&d.paths, settings.start_at_login) {
         log::warn!("autostart: {e}");

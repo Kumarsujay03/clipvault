@@ -14,6 +14,7 @@ import type {
   Settings,
   ShortcutStatus,
   TagCount,
+  UpdateInfo,
 } from "./types";
 import { createMockApi } from "./mock";
 
@@ -21,6 +22,8 @@ export interface Api {
   /** True when running without the Tauri backend (browser preview with demo data). */
   readonly preview: boolean;
   panelReady(): Promise<void>;
+  /** Start moving the panel with the mouse (call from a mousedown handler). */
+  startMove(): Promise<void>;
   listItems(query: ListQuery): Promise<Page>;
   getItem(id: number): Promise<ItemDetail>;
   getCounts(): Promise<Counts>;
@@ -45,6 +48,10 @@ export interface Api {
   exportHistory(includeImages: boolean): Promise<string>;
   listBackups(): Promise<BackupInfo[]>;
   importBackup(name: string): Promise<ImportReport>;
+  /** Check GitHub for a newer release; with onlyIfDue, only when the daily check is due. */
+  checkUpdate(onlyIfDue: boolean): Promise<UpdateInfo | null>;
+  /** Download, verify and install the latest release, then restart. */
+  installUpdate(): Promise<string>;
   on<T = unknown>(event: AppEvent, cb: (payload: T) => void): Promise<() => void>;
   mediaUrl(kind: "thumb" | "full", id: number): string;
 }
@@ -52,6 +59,7 @@ export interface Api {
 const tauriApi: Api = {
   preview: false,
   panelReady: () => invoke("panel_ready"),
+  startMove: () => invoke("start_move"),
   listItems: (query) => invoke("list_items", { query }),
   getItem: (id) => invoke("get_item", { id }),
   getCounts: () => invoke("get_counts"),
@@ -76,6 +84,8 @@ const tauriApi: Api = {
   exportHistory: (includeImages) => invoke("export_history", { includeImages }),
   listBackups: () => invoke("list_backups"),
   importBackup: (name) => invoke("import_backup", { name }),
+  checkUpdate: (onlyIfDue) => invoke("check_update", { onlyIfDue }),
+  installUpdate: () => invoke("install_update"),
   on: (event, cb) => listen(event, (e) => cb(e.payload as never)),
   // WebKitGTK serves custom schemes as <scheme>://localhost/<path>.
   mediaUrl: (kind, id) => `cvmedia://localhost/${kind}/${id}`,

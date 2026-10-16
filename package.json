@@ -1,7 +1,7 @@
 {
   "name": "clipvault",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Windows-style clipboard history (Super+V) for Ubuntu / GNOME on Wayland",
   "license": "MIT",
   "author": "Sujay Kumar",

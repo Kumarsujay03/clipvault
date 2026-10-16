@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { api, errorMessage } from "./lib/api";
-import type { AppStatus, CaptureStatus, Counts, Filter, ItemDetail, ItemSummary, Settings, Sort } from "./lib/types";
+import type { AppStatus, CaptureStatus, Counts, Filter, ItemDetail, ItemSummary, Settings, Sort, UpdateInfo } from "./lib/types";
 
 const PAGE = 100;
 
@@ -29,6 +29,8 @@ interface AppStore {
   view: View;
   /** Bumped whenever the panel is shown, so the UI can reset focus/scroll. */
   shownSeq: number;
+  update: UpdateInfo | null;
+  updateProgress: string | null;
 
   init(): Promise<() => void>;
   refresh(): Promise<void>;
@@ -51,6 +53,8 @@ interface AppStore {
   toast(kind: Toast["kind"], text: string): void;
   dismissToast(id: number): void;
   openView(view: View, id?: number): void;
+  checkUpdate(manual: boolean): Promise<void>;
+  installUpdate(): Promise<void>;
 }
 
 let toastSeq = 0;
@@ -88,6 +92,8 @@ export const useApp = create<AppStore>((set, get) => {
     toasts: [],
     view: "list",
     shownSeq: 0,
+    update: null,
+    updateProgress: null,
 
     async init() {
       const unlisteners = await Promise.all([
@@ -98,7 +104,9 @@ export const useApp = create<AppStore>((set, get) => {
         api.on("panel-shown", () => {
           set((st) => ({ view: "list", shownSeq: st.shownSeq + 1 }));
           void get().refresh();
+          void get().checkUpdate(false);
         }),
+        api.on<string>("update-progress", (msg) => set({ updateProgress: msg })),
       ]);
       try {
         const [settings] = await Promise.all([api.getSettings(), get().refreshStatus()]);
@@ -108,6 +116,7 @@ export const useApp = create<AppStore>((set, get) => {
       }
       await get().refresh();
       void api.panelReady();
+      void get().checkUpdate(false);
       return () => unlisteners.forEach((u) => u());
     },
 
@@ -275,6 +284,27 @@ export const useApp = create<AppStore>((set, get) => {
     },
     dismissToast(id) {
       set((st) => ({ toasts: st.toasts.filter((t) => t.id !== id) }));
+    },
+
+    async checkUpdate(manual) {
+      try {
+        const info = await api.checkUpdate(!manual);
+        if (info) set({ update: info });
+        if (manual && info && !info.available) get().toast("info", `ClipVault ${info.current} is up to date`);
+      } catch (e) {
+        if (manual) fail(e);
+      }
+    },
+
+    async installUpdate() {
+      set({ updateProgress: "Starting…" });
+      try {
+        const msg = await api.installUpdate();
+        set({ updateProgress: msg });
+      } catch (e) {
+        set({ updateProgress: null });
+        fail(e);
+      }
     },
 
     openView(view, id) {

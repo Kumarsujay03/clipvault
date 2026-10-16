@@ -4,14 +4,20 @@ ClipVault sees everything you copy, so it's built to keep that data local and mi
 
 ## Guarantees
 
-- **Local only.** History lives in `~/.local/share/clipvault/` (mode `0700`) and backups in `~/Documents/ClipVault Backups/` (files `0600`). No cloud, account, telemetry or analytics. Neither process makes network connections: the panel's Content-Security-Policy only allows its own assets, IPC and the local `cvmedia:` image scheme, and the daemon has no network code.
+- **Local only.** History lives in `~/.local/share/clipvault/` (mode `0700`) and backups in `~/Documents/ClipVault Backups/` (files `0600`). No cloud, account, telemetry or analytics. The background service has no network code. The panel's web view is limited by its Content-Security-Policy to its own assets, IPC and the local `cvmedia:` image scheme. The only network use is the update check, and it runs only when you press *Check for updates*, run `clipvault --update`, or turn on the daily check (off by default).
 - **Local IPC only.** The panel and daemon talk over Unix sockets in `$XDG_RUNTIME_DIR/clipvault/` (directory `0700`, sockets `0600`), so only your user can connect. The protocol is a fixed set of typed requests; unknown requests are rejected.
 - **No content in logs.** Logs record sizes, MIME types and reasons only.
-- **Runs unprivileged.** Root is never needed. `sudo` is used only by `install.sh` to install the `.deb`.
+- **Runs unprivileged.** ClipVault never runs as root. Root is used only to install the `.deb`: by `sudo` in `install.sh`, or by `pkexec apt-get` when you install an update.
 - **Read-only inspection.** Reading the clipboard never changes its owner. ClipVault takes ownership only when you choose an item.
 - **Original files are safe.** For copied files only paths/URIs are stored. Deleting entries never touches the files.
 - **Narrow UI surface.** The panel has no filesystem, shell or HTTP permissions. Images are served by item id, never by path. Backup restore only accepts file names inside the backup folder.
 - **Safe rendering and decoding.** Rich text is sanitized with DOMPurify (scripts, event handlers, forms, frames, styles and remote images removed), and the CSP blocks remote loads as a second layer. Images are decoded with dimension and allocation limits.
+
+## Updates
+
+- The update check asks the GitHub API for the latest release of `Kumarsujay03/clipvault`. It sends nothing except a normal request with a `ClipVault/<version>` user agent.
+- Downloads are compared against the `SHA256SUMS` file published with the release before anything is installed; a mismatch is discarded. This catches corrupted or tampered downloads, but it relies on the GitHub release itself being trustworthy.
+- `.deb` updates are installed by `apt-get` through `pkexec`, so the system asks for your password; ClipVault itself never runs as root. AppImages are replaced in place without root.
 
 ## What `--setup` changes on your desktop
 

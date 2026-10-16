@@ -265,6 +265,11 @@ export function SettingsView() {
           {status && <p className="selectable text-[11px] text-muted">Folder: {status.backupDir}</p>}
         </Section>
 
+        <Section title="Updates">
+          <UpdatesPanel />
+          {toggle("check_updates", "Check automatically once a day", "Asks GitHub for the latest release when you open the panel. Off = no network use at all")}
+        </Section>
+
         <Section title="About">
           <p className="text-[11.5px] text-muted">
             ClipVault {status?.version} · everything stays on this computer · no network access
@@ -306,6 +311,57 @@ export function SettingsView() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function UpdatesPanel() {
+  const update = useApp((s) => s.update);
+  const progress = useApp((s) => s.updateProgress);
+  const check = useApp((s) => s.checkUpdate);
+  const install = useApp((s) => s.installUpdate);
+  const version = useApp((s) => s.status?.version);
+  const [checking, setChecking] = useState(false);
+  const working = !!progress && !/^(Updated|ClipVault .* already)/.test(progress);
+
+  return (
+    <div className="space-y-2 text-[12.5px]">
+      <div className="flex items-center justify-between gap-3">
+        <span>
+          Installed: <b>ClipVault {version ?? "…"}</b>
+        </span>
+        <Button
+          busy={checking}
+          onClick={async () => {
+            setChecking(true);
+            await check(true);
+            setChecking(false);
+          }}
+        >
+          Check for updates
+        </Button>
+      </div>
+      {update?.available && (
+        <div className="space-y-2 rounded-md border border-accent/40 bg-accent-soft p-2.5">
+          <div className="font-medium text-accent">ClipVault {update.latest} is available</div>
+          {update.notes && (
+            <pre className="selectable max-h-28 overflow-y-auto whitespace-pre-wrap font-sans text-[11.5px] leading-relaxed text-fg/80">
+              {update.notes}
+            </pre>
+          )}
+          {update.installKind === "manual" ? (
+            <p className="text-[11.5px] text-muted">
+              This copy was built from source. Update with <code className="selectable">git pull</code> and rebuild (see README).
+            </p>
+          ) : (
+            <Button busy={working} onClick={() => void install()}>
+              {update.installKind === "deb" ? "Install update (asks for your password)" : "Install update"}
+            </Button>
+          )}
+          <p className="selectable break-all text-[11px] text-muted">{update.url}</p>
+        </div>
+      )}
+      {progress && <p className="text-[11.5px] text-muted" role="status">{progress}</p>}
     </div>
   );
 }

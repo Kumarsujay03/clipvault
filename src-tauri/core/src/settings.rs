@@ -61,6 +61,9 @@ pub struct Settings {
     pub paste_on_select: bool,
     /// Extract text from copied images with Tesseract (if installed) so they are searchable.
     pub ocr_images: bool,
+    /// Look for a new ClipVault release on GitHub at most once a day when the panel opens.
+    /// Off by default: ClipVault makes no network requests unless you allow it.
+    pub check_updates: bool,
 }
 
 impl Default for Settings {
@@ -87,6 +90,7 @@ impl Default for Settings {
             hide_on_blur: true,
             paste_on_select: true,
             ocr_images: false,
+            check_updates: false,
         }
     }
 }

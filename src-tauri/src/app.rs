@@ -29,6 +29,11 @@ pub struct AppState {
     pub capture: RwLock<Option<CaptureStatus>>,
     hide_generation: AtomicU64,
     shown_once: AtomicBool,
+    /// The user is dragging the panel. GNOME takes keyboard focus away from a window
+    /// while the compositor moves it, which must not count as "clicked elsewhere".
+    pub moving: AtomicBool,
+    /// Long-running work (an update install) is in progress: never hide or unload.
+    pub busy: AtomicBool,
 }
 
 impl AppState {
@@ -78,7 +83,10 @@ pub fn hide_panel(app: &AppHandle) {
             .get_webview_window("main")
             .and_then(|w| w.is_visible().ok())
             .unwrap_or(false);
-        if st.hide_generation.load(Ordering::SeqCst) == generation && !visible {
+        if st.hide_generation.load(Ordering::SeqCst) == generation
+            && !visible
+            && !st.busy.load(Ordering::SeqCst)
+        {
             log::info!("panel idle; unloading UI");
             app.exit(0);
         }
@@ -212,6 +220,8 @@ pub fn run() {
                 capture: RwLock::new(None),
                 hide_generation: AtomicU64::new(0),
                 shown_once: AtomicBool::new(false),
+                moving: AtomicBool::new(false),
+                busy: AtomicBool::new(false),
             });
             app.manage(state.clone());
 
@@ -240,9 +250,19 @@ pub fn run() {
                 api.prevent_close();
                 hide_panel(window.app_handle());
             }
+            WindowEvent::Focused(true) => {
+                // A move (drag) ends with focus coming back to the panel.
+                state(window.app_handle())
+                    .moving
+                    .store(false, Ordering::SeqCst);
+            }
             WindowEvent::Focused(false) => {
                 let app = window.app_handle().clone();
-                if !state(&app).settings().hide_on_blur {
+                let st = state(&app);
+                if !st.settings().hide_on_blur
+                    || st.moving.load(Ordering::SeqCst)
+                    || st.busy.load(Ordering::SeqCst)
+                {
                     return;
                 }
                 // Ignore momentary focus flicker while the window maps.
@@ -250,6 +270,10 @@ pub fn run() {
                     std::thread::sleep(Duration::from_millis(180));
                     let a = app.clone();
                     let _ = app.run_on_main_thread(move || {
+                        let st = state(&a);
+                        if st.moving.load(Ordering::SeqCst) || st.busy.load(Ordering::SeqCst) {
+                            return;
+                        }
                         if let Some(w) = a.get_webview_window("main") {
                             if w.is_visible().unwrap_or(false) && !w.is_focused().unwrap_or(true) {
                                 hide_panel(&a);
@@ -262,6 +286,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::panel_ready,
+            commands::start_move,
             commands::list_items,
             commands::get_item,
             commands::get_counts,
@@ -286,6 +311,8 @@ pub fn run() {
             commands::export_history,
             commands::list_backups,
             commands::import_backup,
+            commands::check_update,
+            commands::install_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ClipVault")

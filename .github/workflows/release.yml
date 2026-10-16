@@ -1,0 +1,67 @@
+name: Release
+
+# Push a tag like v0.3.0 to build the .deb and AppImage and publish a GitHub release.
+# Installed copies of ClipVault find it through Settings -> Updates and `clipvault --update`.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Building on the oldest supported Ubuntu keeps the packages compatible with 24.04+.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check the tag matches the app version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match version $version"; exit 1; }
+          grep -q "^## \[$version\]" CHANGELOG.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev patchelf file
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Test
+        run: |
+          npm ci
+          npm test
+          node scripts/build-daemon.mjs debug
+          (cd src-tauri && cargo test --workspace --lib)
+
+      - name: Build packages
+        run: npm run tauri build
+
+      - name: Collect artifacts and checksums
+        run: |
+          version=$(node -p "require('./package.json').version")
+          mkdir -p out
+          cp "src-tauri/target/release/bundle/deb/ClipVault_${version}_amd64.deb" out/
+          cp "src-tauri/target/release/bundle/appimage/ClipVault_${version}_amd64.AppImage" out/
+          (cd out && sha256sum ClipVault_* > SHA256SUMS && cat SHA256SUMS)
+          # Release notes = this version's CHANGELOG section.
+          awk -v v="$version" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notes.md
+          printf '\n---\n**Install:** `sudo apt install ./ClipVault_%s_amd64.deb && clipvault --setup`, then log out and back in once.\n**Already using ClipVault 0.2 or newer?** Settings → Updates → Install update, or run `clipvault --update`.\nVerify downloads with `sha256sum -c SHA256SUMS`.\n' "$version" >> notes.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          gh release create "$GITHUB_REF_NAME" out/* --title "ClipVault $version" --notes-file notes.md

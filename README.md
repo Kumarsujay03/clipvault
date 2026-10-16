@@ -14,19 +14,19 @@ Windows-style clipboard history for Ubuntu: press **Super+V**, pick an item, and
 - **Instant search** across text, file names, tags and, optionally, text inside images (local OCR).
 - **Tiny footprint.** When the panel is closed, only a ~5 MB background service runs, with 0% CPU while idle. The panel (~265 MB while open, mostly WebKit) loads in about 0.35 s when you open it and unloads after a configurable delay.
 - **Starts at login**, and the top-bar icon can be hidden (Settings → General).
-- **Private:** no network access, no telemetry, nothing logged. You get pause/resume, privacy mode, retention limits and a filter for likely passwords and keys.
+- **Private:** no network access (except when you check for updates), no telemetry, nothing logged. You get pause/resume, privacy mode, retention limits and a filter for likely passwords and keys.
 - **Backup and restore** to `~/Documents/ClipVault Backups/`.
 - Light and dark themes follow the system.
 
 ## Install
 
-### Option 1: download the .deb (Ubuntu 26.04)
+### Option 1: download the .deb (Ubuntu 24.04 or newer)
 
-1. Download `ClipVault_0.1.0_amd64.deb` from the [latest release](https://github.com/Kumarsujay03/clipvault/releases/latest).
+1. Download `ClipVault_0.2.0_amd64.deb` from the [latest release](https://github.com/Kumarsujay03/clipvault/releases/latest).
 2. Install it and set it up for your user:
 
 ```bash
-sudo apt install ./ClipVault_0.1.0_amd64.deb
+sudo apt install ./ClipVault_0.2.0_amd64.deb
 clipvault --setup
 clipvault --daemon &
 ```
@@ -42,10 +42,10 @@ clipvault --daemon &
 There's also a portable **AppImage** on the release page:
 
 ```bash
-chmod +x ClipVault_0.1.0_amd64.AppImage && ./ClipVault_0.1.0_amd64.AppImage --setup
+chmod +x ClipVault_0.2.0_amd64.AppImage && ./ClipVault_0.2.0_amd64.AppImage --setup
 ```
 
-> **Compatibility:** the prebuilt packages are built on Ubuntu 26.04 (GNOME 50) and need its library versions. On other Ubuntu or Debian releases, build from source (below). The GNOME extension supports GNOME Shell 45–50.
+> **Compatibility:** the prebuilt packages are built on Ubuntu 24.04 and run on Ubuntu 24.04 or newer. On other distributions, build from source (below). The GNOME extension supports GNOME Shell 45–50.
 
 ### Option 2: build from source
 
@@ -62,6 +62,17 @@ npm run tauri build
 `install.sh` installs the freshly built `.deb` (using sudo only for that) and runs the same setup.
 
 Optional: install `tesseract-ocr` and turn on *Settings → Capture → Make text in images searchable*.
+
+### Updating
+
+- **From the app:** Super+V → ⚙ Settings → **Updates** → *Check for updates* → *Install update*. ClipVault downloads the new release, verifies its checksum, installs it (a `.deb` asks for your password) and restarts itself.
+- **From the terminal:** `clipvault --update`
+- **Automatically:** turn on *Check automatically once a day* in Settings → Updates (off by default). The panel shows a banner when a new version is out.
+- Upgrading with `apt` or a newer `.deb` also works: the background service notices and restarts on the new version by itself.
+
+What changed in each version: [CHANGELOG.md](CHANGELOG.md).
+
+> Coming from **0.1.0**? It has no updater yet. Install 0.2.0 once (download the `.deb` above, or `git pull` and `./scripts/install.sh`), and every later version can be installed from the app.
 
 ### Hide the top-bar icon
 
@@ -129,7 +140,7 @@ Measured on this machine (GNOME 50.1, Wayland, release build):
 - **No middle-click history:** the primary selection is not recorded.
 - **Not a password guarantee:** the secret filter is best-effort (see [SECURITY.md](SECURITY.md)).
 
-More: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) · [DEVELOPMENT.md](DEVELOPMENT.md) · [SECURITY.md](SECURITY.md) · [CONTRIBUTING.md](CONTRIBUTING.md)
+More: [CHANGELOG.md](CHANGELOG.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) · [DEVELOPMENT.md](DEVELOPMENT.md) · [SECURITY.md](SECURITY.md) · [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
 

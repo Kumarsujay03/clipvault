@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use clipvault_core::autostart;
 use clipvault_core::capture::CaptureStatus;
@@ -17,6 +17,7 @@ use clipvault_core::model::{Counts, ItemDetail, ListQuery, Page};
 use clipvault_core::settings::Settings;
 
 use crate::app::{self, AppState};
+use crate::update;
 
 type St<'a> = State<'a, Arc<AppState>>;
 
@@ -51,6 +52,31 @@ pub async fn panel_ready(app: AppHandle) -> AppResult<()> {
     let a = app.clone();
     app.run_on_main_thread(move || app::show_panel(&a))
         .map_err(|e| AppError::Other(e.to_string()))
+}
+
+/// Begin moving the panel with the mouse. Marked first so the focus loss GNOME causes
+/// during the move does not hide the panel.
+#[tauri::command]
+pub fn start_move(app: AppHandle, state: St<'_>) -> AppResult<()> {
+    use std::sync::atomic::Ordering;
+    state.moving.store(true, Ordering::SeqCst);
+    let w = app
+        .get_webview_window("main")
+        .ok_or_else(|| AppError::Other("no window".into()))?;
+    w.start_dragging().map_err(|e| {
+        state.moving.store(false, Ordering::SeqCst);
+        AppError::Other(e.to_string())
+    })?;
+    // Where moving does not take focus away (X11), nothing will clear the flag; do it here
+    // once the drag has begun and the panel still has focus.
+    let st = state.inner().clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        if w.is_focused().unwrap_or(false) {
+            st.moving.store(false, Ordering::SeqCst);
+        }
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -361,4 +387,60 @@ pub async fn import_backup(app: AppHandle, state: St<'_>, name: String) -> AppRe
     .await?;
     changed(&app);
     Ok(r)
+}
+
+/// Check GitHub for a newer release. With `only_if_due`, skip (returning None) unless the
+/// daily automatic check is enabled and a day has passed since the last check.
+#[tauri::command]
+pub async fn check_update(
+    state: St<'_>,
+    only_if_due: bool,
+) -> AppResult<Option<update::UpdateInfo>> {
+    blocking(&state, move |s| {
+        if only_if_due {
+            let due = s.settings().check_updates
+                && update::since_last_check(&s.paths)
+                    .map(|ms| ms > 86_400_000)
+                    .unwrap_or(true);
+            if !due {
+                return Ok(None);
+            }
+        }
+        update::check(&s.paths).map(Some).map_err(AppError::Other)
+    })
+    .await
+}
+
+/// Download, verify and install the latest release, then restart ClipVault on it.
+/// Progress is reported through `update-progress` events.
+#[tauri::command]
+pub async fn install_update(app: AppHandle, state: St<'_>) -> AppResult<String> {
+    use std::sync::atomic::Ordering;
+    state.busy.store(true, Ordering::SeqCst);
+    let progress_app = app.clone();
+    let result = blocking(&state, move |s| {
+        update::install(&s.paths, &|msg: String| {
+            let _ = progress_app.emit("update-progress", msg);
+        })
+        .map_err(AppError::Other)
+    })
+    .await;
+    state.busy.store(false, Ordering::SeqCst);
+    let msg = result?;
+    if msg.starts_with("Updated") {
+        let _ = app.emit("update-progress", "Restarting ClipVault…".to_string());
+        update::restart_service();
+        // Relaunch the panel from the new binary once this process has exited.
+        if let Some(mut argv) = clipvault_core::desktop::ui_argv() {
+            argv.push(format!("--wait-pid={}", std::process::id()));
+            argv.push("--show".into());
+            let _ = clipvault_core::desktop::spawn_detached(&argv);
+        }
+        let exit_app = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(800));
+            exit_app.exit(0);
+        });
+    }
+    Ok(msg)
 }
