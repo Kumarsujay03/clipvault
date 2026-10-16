@@ -2,6 +2,12 @@
 
 All notable changes to ClipVault are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-17
+
+### Fixed
+- **Dragging the panel really keeps it open now.** 0.2.0 still closed the panel when you pressed and held the top strip before moving: a 0.6-second safety timer switched the protection off before GNOME took focus away for the move. The panel now tracks the move itself (until you release the button or it regains focus), so press-and-hold, slow drags and quick drags all keep it open.
+- Every time the panel hides, the log records why (for example "focus moved to another window" or "close button or Esc"), which makes problems like this easy to diagnose: `journalctl --user -b | grep "panel hidden"`.
+
 ## [0.2.0] - 2026-10-17
 
 ### Fixed
@@ -24,5 +30,6 @@ All notable changes to ClipVault are listed here. Versions follow [Semantic Vers
 
 First public release: Super+V clipboard panel, the ~5 MB background service, pins, favorites, tags, search, image and file history, optional OCR, backup and restore, and the GNOME extension for opening at the pointer and auto-paste.
 
+[0.2.1]: https://github.com/Kumarsujay03/clipvault/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Kumarsujay03/clipvault/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Kumarsujay03/clipvault/releases/tag/v0.1.0

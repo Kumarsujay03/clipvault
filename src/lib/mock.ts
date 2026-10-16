@@ -122,6 +122,7 @@ export function createMockApi(seed: ItemDetail[] = demoItems()): Api {
     preview: true,
     async panelReady() {},
     async startMove() {},
+    async endMove() {},
     async listItems(q: ListQuery) {
       const terms = (q.search ?? "").toLowerCase().split(/\s+/).filter(Boolean);
       let rows = items.filter((i) => {

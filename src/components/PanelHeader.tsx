@@ -6,6 +6,21 @@ import type { Filter } from "../lib/types";
 
 export const SEARCH_INPUT_ID = "clipvault-search";
 
+// Moving the panel. GNOME takes focus away from a window while it moves it, so the backend
+// must know when a move starts and ends. It ends with the button release, or (when the
+// compositor swallowed the release during the move) the first pointer motion with no button
+// held. A press-and-hold before moving keeps the button down, so it never ends the move early.
+let moving = false;
+function endMove() {
+  if (!moving) return;
+  moving = false;
+  void api.endMove();
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("mouseup", endMove, true);
+  window.addEventListener("mousemove", (e) => e.buttons === 0 && endMove(), true);
+}
+
 const CHIPS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "pinned", label: "Pinned" },
@@ -113,6 +128,7 @@ export function TitleBar({ title, children }: { title: string; children?: React.
         // Drag anywhere on the strip except its buttons.
         if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
         e.preventDefault();
+        moving = true;
         void api.startMove();
       }}
     >

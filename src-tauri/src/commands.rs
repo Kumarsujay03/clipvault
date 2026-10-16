@@ -55,10 +55,14 @@ pub async fn panel_ready(app: AppHandle) -> AppResult<()> {
 }
 
 /// Begin moving the panel with the mouse. Marked first so the focus loss GNOME causes
-/// during the move does not hide the panel.
+/// while the compositor moves the window does not hide the panel. The frontend reports the
+/// end of the move with `end_move`.
 #[tauri::command]
 pub fn start_move(app: AppHandle, state: St<'_>) -> AppResult<()> {
     use std::sync::atomic::Ordering;
+    state
+        .moving_since
+        .store(clipvault_core::model::now_ms() as u64, Ordering::SeqCst);
     state.moving.store(true, Ordering::SeqCst);
     let w = app
         .get_webview_window("main")
@@ -66,15 +70,31 @@ pub fn start_move(app: AppHandle, state: St<'_>) -> AppResult<()> {
     w.start_dragging().map_err(|e| {
         state.moving.store(false, Ordering::SeqCst);
         AppError::Other(e.to_string())
-    })?;
-    // Where moving does not take focus away (X11), nothing will clear the flag; do it here
-    // once the drag has begun and the panel still has focus.
+    })
+}
+
+/// The move is over (the pointer came back to the panel, or the button was released). If
+/// focus really went elsewhere meanwhile, hide now as hide-on-blur would have.
+#[tauri::command]
+pub fn end_move(app: AppHandle, state: St<'_>) -> AppResult<()> {
+    use std::sync::atomic::Ordering;
+    if !state.moving.swap(false, Ordering::SeqCst) {
+        return Ok(());
+    }
     let st = state.inner().clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(600));
-        if w.is_focused().unwrap_or(false) {
-            st.moving.store(false, Ordering::SeqCst);
-        }
+        // Give the compositor a moment to hand focus back after the move.
+        std::thread::sleep(Duration::from_millis(400));
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let Some(w) = a.get_webview_window("main") else {
+                return;
+            };
+            let unfocused = w.is_visible().unwrap_or(false) && !w.is_focused().unwrap_or(true);
+            if unfocused && st.settings().hide_on_blur && !st.is_moving() {
+                app::hide_panel(&a, "focus did not return after moving");
+            }
+        });
     });
     Ok(())
 }
@@ -200,7 +220,7 @@ pub async fn copy_item(
     let hide = want_paste || settings.close_on_copy;
     if hide {
         let a = app.clone();
-        let _ = app.run_on_main_thread(move || app::hide_panel(&a));
+        let _ = app.run_on_main_thread(move || app::hide_panel(&a, "item chosen"));
     }
     let pasted = if want_paste {
         blocking(&state, |_| Ok(desktop::request_paste().is_ok())).await?
@@ -325,7 +345,7 @@ pub async fn start_service(state: St<'_>) -> AppResult<bool> {
 #[tauri::command]
 pub async fn hide_window(app: AppHandle) -> AppResult<()> {
     let a = app.clone();
-    app.run_on_main_thread(move || app::hide_panel(&a))
+    app.run_on_main_thread(move || app::hide_panel(&a, "close button or Esc"))
         .map_err(|e| AppError::Other(e.to_string()))
 }
 

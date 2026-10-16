@@ -1,6 +1,6 @@
 [package]
 name = "clipvault-core"
-version = "0.2.0"
+version = "0.2.1"
 description = "ClipVault clipboard engine and background daemon (no GUI toolkit)"
 authors = ["Sujay Kumar"]
 edition = "2021"

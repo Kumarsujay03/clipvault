@@ -32,6 +32,9 @@ pub struct AppState {
     /// The user is dragging the panel. GNOME takes keyboard focus away from a window
     /// while the compositor moves it, which must not count as "clicked elsewhere".
     pub moving: AtomicBool,
+    /// When the current move started (ms since epoch), so a lost "move ended" signal can
+    /// never disable hide-on-blur for long.
+    pub moving_since: AtomicU64,
     /// Long-running work (an update install) is in progress: never hide or unload.
     pub busy: AtomicBool,
 }
@@ -39,6 +42,12 @@ pub struct AppState {
 impl AppState {
     pub fn settings(&self) -> Settings {
         self.settings.read().unwrap().clone()
+    }
+
+    /// True while the user is moving the panel (bounded to 60 s in case the end is missed).
+    pub fn is_moving(&self) -> bool {
+        let since = self.moving_since.load(Ordering::SeqCst) as i64;
+        self.moving.load(Ordering::SeqCst) && clipvault_core::model::now_ms() - since < 60_000
     }
 }
 
@@ -65,7 +74,8 @@ pub fn show_panel(app: &AppHandle) {
     let _ = app.emit("panel-shown", ());
 }
 
-pub fn hide_panel(app: &AppHandle) {
+pub fn hide_panel(app: &AppHandle, reason: &str) {
+    log::info!("panel hidden: {reason}");
     let st = state(app);
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
@@ -99,7 +109,7 @@ fn toggle_panel(app: &AppHandle) {
         .map(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false))
         .unwrap_or(false);
     if visible_focused {
-        hide_panel(app)
+        hide_panel(app, "toggled by shortcut")
     } else {
         show_panel(app)
     }
@@ -183,7 +193,7 @@ fn spawn_ui_socket(app: AppHandle) -> Result<(), String> {
                 let cmd = line.trim().to_owned();
                 let _ = app.run_on_main_thread(move || match cmd.as_str() {
                     "show" => show_panel(&app2),
-                    "hide" => hide_panel(&app2),
+                    "hide" => hide_panel(&app2, "clipvault --hide"),
                     "toggle" => toggle_panel(&app2),
                     "quit" => app2.exit(0),
                     _ => {}
@@ -221,6 +231,7 @@ pub fn run() {
                 hide_generation: AtomicU64::new(0),
                 shown_once: AtomicBool::new(false),
                 moving: AtomicBool::new(false),
+                moving_since: AtomicU64::new(0),
                 busy: AtomicBool::new(false),
             });
             app.manage(state.clone());
@@ -248,7 +259,7 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
-                hide_panel(window.app_handle());
+                hide_panel(window.app_handle(), "window closed");
             }
             WindowEvent::Focused(true) => {
                 // A move (drag) ends with focus coming back to the panel.
@@ -259,10 +270,11 @@ pub fn run() {
             WindowEvent::Focused(false) => {
                 let app = window.app_handle().clone();
                 let st = state(&app);
-                if !st.settings().hide_on_blur
-                    || st.moving.load(Ordering::SeqCst)
-                    || st.busy.load(Ordering::SeqCst)
-                {
+                if !st.settings().hide_on_blur || st.busy.load(Ordering::SeqCst) {
+                    return;
+                }
+                if st.is_moving() {
+                    log::info!("focus left the panel while it is being moved; keeping it open");
                     return;
                 }
                 // Ignore momentary focus flicker while the window maps.
@@ -271,12 +283,12 @@ pub fn run() {
                     let a = app.clone();
                     let _ = app.run_on_main_thread(move || {
                         let st = state(&a);
-                        if st.moving.load(Ordering::SeqCst) || st.busy.load(Ordering::SeqCst) {
+                        if st.is_moving() || st.busy.load(Ordering::SeqCst) {
                             return;
                         }
                         if let Some(w) = a.get_webview_window("main") {
                             if w.is_visible().unwrap_or(false) && !w.is_focused().unwrap_or(true) {
-                                hide_panel(&a);
+                                hide_panel(&a, "focus moved to another window");
                             }
                         }
                     });
@@ -287,6 +299,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::panel_ready,
             commands::start_move,
+            commands::end_move,
             commands::list_items,
             commands::get_item,
             commands::get_counts,

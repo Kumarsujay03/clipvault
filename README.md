@@ -22,11 +22,11 @@ Windows-style clipboard history for Ubuntu: press **Super+V**, pick an item, and
 
 ### Option 1: download the .deb (Ubuntu 24.04 or newer)
 
-1. Download `ClipVault_0.2.0_amd64.deb` from the [latest release](https://github.com/Kumarsujay03/clipvault/releases/latest).
+1. Download `ClipVault_0.2.1_amd64.deb` from the [latest release](https://github.com/Kumarsujay03/clipvault/releases/latest).
 2. Install it and set it up for your user:
 
 ```bash
-sudo apt install ./ClipVault_0.2.0_amd64.deb
+sudo apt install ./ClipVault_0.2.1_amd64.deb
 clipvault --setup
 clipvault --daemon &
 ```
@@ -42,7 +42,7 @@ clipvault --daemon &
 There's also a portable **AppImage** on the release page:
 
 ```bash
-chmod +x ClipVault_0.2.0_amd64.AppImage && ./ClipVault_0.2.0_amd64.AppImage --setup
+chmod +x ClipVault_0.2.1_amd64.AppImage && ./ClipVault_0.2.1_amd64.AppImage --setup
 ```
 
 > **Compatibility:** the prebuilt packages are built on Ubuntu 24.04 and run on Ubuntu 24.04 or newer. On other distributions, build from source (below). The GNOME extension supports GNOME Shell 45–50.
