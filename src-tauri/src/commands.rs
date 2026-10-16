@@ -60,6 +60,8 @@ pub async fn panel_ready(app: AppHandle) -> AppResult<()> {
 #[tauri::command]
 pub fn start_move(app: AppHandle, state: St<'_>) -> AppResult<()> {
     use std::sync::atomic::Ordering;
+    log::debug!("move started");
+    state.lost_during_move.store(false, Ordering::SeqCst);
     state
         .moving_since
         .store(clipvault_core::model::now_ms() as u64, Ordering::SeqCst);
@@ -76,8 +78,12 @@ pub fn start_move(app: AppHandle, state: St<'_>) -> AppResult<()> {
 /// The move is over (the pointer came back to the panel, or the button was released). If
 /// focus really went elsewhere meanwhile, hide now as hide-on-blur would have.
 #[tauri::command]
-pub fn end_move(app: AppHandle, state: St<'_>) -> AppResult<()> {
+pub fn end_move(app: AppHandle, state: St<'_>, reason: Option<String>) -> AppResult<()> {
     use std::sync::atomic::Ordering;
+    log::debug!(
+        "move end reported by panel: {}",
+        reason.as_deref().unwrap_or("?")
+    );
     if !state.moving.swap(false, Ordering::SeqCst) {
         return Ok(());
     }

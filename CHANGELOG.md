@@ -5,7 +5,8 @@ All notable changes to ClipVault are listed here. Versions follow [Semantic Vers
 ## [0.2.1] - 2026-10-17
 
 ### Fixed
-- **Dragging the panel really keeps it open now.** 0.2.0 still closed the panel when you pressed and held the top strip before moving: a 0.6-second safety timer switched the protection off before GNOME took focus away for the move. The panel now tracks the move itself (until you release the button or it regains focus), so press-and-hold, slow drags and quick drags all keep it open.
+- **Dragging the panel really keeps it open now.** When a move starts, GTK first reports a stray "focus gained" and only then loses focus to GNOME's move. 0.2.0 treated that first signal as "the move is over", so the panel closed a moment after you started dragging. A move now ends only when focus comes back *after* it was lost (or when you release the mouse), so press-and-hold, slow drags and quick drags all keep the panel open. Clicking outside the panel still closes it.
+- The red confirm buttons ("Clear all", "Clear everything") were light pink with white text in dark mode and hard to read. They are now a solid deep red with white text in both themes.
 - Every time the panel hides, the log records why (for example "focus moved to another window" or "close button or Esc"), which makes problems like this easy to diagnose: `journalctl --user -b | grep "panel hidden"`.
 
 ## [0.2.0] - 2026-10-17

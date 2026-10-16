@@ -11,14 +11,14 @@ export const SEARCH_INPUT_ID = "clipvault-search";
 // compositor swallowed the release during the move) the first pointer motion with no button
 // held. A press-and-hold before moving keeps the button down, so it never ends the move early.
 let moving = false;
-function endMove() {
+function endMove(reason: string) {
   if (!moving) return;
   moving = false;
-  void api.endMove();
+  void api.endMove(reason);
 }
 if (typeof window !== "undefined") {
-  window.addEventListener("mouseup", endMove, true);
-  window.addEventListener("mousemove", (e) => e.buttons === 0 && endMove(), true);
+  window.addEventListener("mouseup", () => endMove("mouseup"), true);
+  window.addEventListener("mousemove", (e) => e.buttons === 0 && endMove("motion without button"), true);
 }
 
 const CHIPS: { id: Filter; label: string }[] = [

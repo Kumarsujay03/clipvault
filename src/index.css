@@ -14,6 +14,7 @@
   --accent-fg: #ffffff;
   --accent-soft: #e5eef8;
   --danger: #c42b1c;
+  --danger-solid: #c42b1c;
   --ok: #0f7b0f;
   --warn: #9d5d00;
   --shadow: 0 8px 32px rgb(0 0 0 / 0.18), 0 2px 6px rgb(0 0 0 / 0.08);
@@ -32,6 +33,7 @@
   --accent-fg: #002437;
   --accent-soft: #1f3a4d;
   --danger: #ff99a4;
+  --danger-solid: #c42b1c;
   --ok: #6ccb5f;
   --warn: #fce100;
   --shadow: 0 8px 32px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.3);
@@ -50,6 +52,8 @@
   --color-accent-fg: var(--accent-fg);
   --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
+  /* Filled destructive buttons: deep red so white text stays readable in both themes. */
+  --color-danger-solid: var(--danger-solid);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --font-sans: "Ubuntu Sans", "Ubuntu", "Cantarell", "Inter", system-ui, sans-serif;
