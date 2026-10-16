@@ -35,6 +35,8 @@ pub struct AppState {
     /// When the current move started (ms since epoch), so a lost "move ended" signal can
     /// never disable hide-on-blur for long.
     pub moving_since: AtomicU64,
+    /// Focus was lost during the current move; its return ends the move.
+    pub lost_during_move: AtomicBool,
     /// Long-running work (an update install) is in progress: never hide or unload.
     pub busy: AtomicBool,
 }
@@ -232,6 +234,7 @@ pub fn run() {
                 shown_once: AtomicBool::new(false),
                 moving: AtomicBool::new(false),
                 moving_since: AtomicU64::new(0),
+                lost_during_move: AtomicBool::new(false),
                 busy: AtomicBool::new(false),
             });
             app.manage(state.clone());
@@ -262,19 +265,24 @@ pub fn run() {
                 hide_panel(window.app_handle(), "window closed");
             }
             WindowEvent::Focused(true) => {
-                // A move (drag) ends with focus coming back to the panel.
-                state(window.app_handle())
-                    .moving
-                    .store(false, Ordering::SeqCst);
+                let st = state(window.app_handle());
+                log::debug!("focus gained (moving={})", st.is_moving());
+                // GTK also reports a focus gain right as the compositor starts the move, so only
+                // focus coming back after it was lost during this move means the move is over.
+                if st.lost_during_move.swap(false, Ordering::SeqCst) {
+                    st.moving.store(false, Ordering::SeqCst);
+                }
             }
             WindowEvent::Focused(false) => {
                 let app = window.app_handle().clone();
                 let st = state(&app);
+                log::debug!("focus lost (moving={})", st.is_moving());
                 if !st.settings().hide_on_blur || st.busy.load(Ordering::SeqCst) {
                     return;
                 }
                 if st.is_moving() {
-                    log::info!("focus left the panel while it is being moved; keeping it open");
+                    st.lost_during_move.store(true, Ordering::SeqCst);
+                    log::debug!("focus left the panel while it is being moved; keeping it open");
                     return;
                 }
                 // Ignore momentary focus flicker while the window maps.

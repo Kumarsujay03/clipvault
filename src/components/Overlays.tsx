@@ -48,7 +48,7 @@ export function ConfirmDialog({
           <button ref={cancelRef} onClick={onCancel} className="h-8 rounded-lg border border-border px-3 text-[12.5px] hover:bg-hover">
             Cancel
           </button>
-          <button onClick={onConfirm} className={`h-8 rounded-lg px-3 text-[12.5px] font-medium hover:opacity-90 ${danger ? "bg-danger text-white" : "bg-accent text-accent-fg"}`}>
+          <button onClick={onConfirm} className={`h-8 rounded-lg px-3 text-[12.5px] font-medium ${danger ? "bg-danger-solid text-white hover:bg-danger-solid/90" : "bg-accent text-accent-fg hover:opacity-90"}`}>
             {confirmLabel}
           </button>
         </div>
