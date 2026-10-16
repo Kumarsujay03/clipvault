@@ -1,0 +1,39 @@
+[workspace]
+members = ["core"]
+
+[package]
+name = "clipvault"
+version = "0.1.0"
+description = "Private, searchable clipboard history for Linux"
+authors = ["Sujay Kumar"]
+license = "MIT"
+repository = "https://github.com/Kumarsujay03/clipvault"
+homepage = "https://github.com/Kumarsujay03/clipvault"
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "clipvault_lib"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "clipvault"
+path = "src/main.rs"
+
+[dependencies]
+clipvault-core = { path = "core" }
+tauri = { version = "2.11.6", features = [] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+log = "0.4.34"
+env_logger = "0.11.11"
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+panic = "abort"

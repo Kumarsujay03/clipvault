@@ -1,0 +1,7 @@
+{
+  "uuid": "clipvault@clipvault.dev",
+  "name": "ClipVault",
+  "description": "Companion for the ClipVault clipboard manager: opens the clipboard panel with Super+V at the mouse pointer and pastes the item you choose. Requires the ClipVault app.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "version": 1
+}
