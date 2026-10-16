@@ -24,6 +24,8 @@ export interface Api {
   panelReady(): Promise<void>;
   /** Start moving the panel with the mouse (call from a mousedown handler). */
   startMove(): Promise<void>;
+  /** The move started by startMove is over. */
+  endMove(): Promise<void>;
   listItems(query: ListQuery): Promise<Page>;
   getItem(id: number): Promise<ItemDetail>;
   getCounts(): Promise<Counts>;
@@ -60,6 +62,7 @@ const tauriApi: Api = {
   preview: false,
   panelReady: () => invoke("panel_ready"),
   startMove: () => invoke("start_move"),
+  endMove: () => invoke("end_move"),
   listItems: (query) => invoke("list_items", { query }),
   getItem: (id) => invoke("get_item", { id }),
   getCounts: () => invoke("get_counts"),

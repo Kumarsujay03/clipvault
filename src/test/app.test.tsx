@@ -128,6 +128,26 @@ describe("dragging the panel", () => {
     fireEvent.mouseDown(strip, { button: 2 });
     expect(spy).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps the move going during press-and-hold and ends it on release or free motion", async () => {
+    await renderApp();
+    const { api } = await import("../lib/api");
+    const end = vi.spyOn(api, "endMove");
+    const { fireEvent } = await import("@testing-library/react");
+    const strip = screen.getAllByTitle("Clipboard")[0];
+
+    fireEvent.mouseDown(strip, { button: 0 });
+    fireEvent.mouseMove(window, { buttons: 1 }); // holding the button: still moving
+    expect(end).not.toHaveBeenCalled();
+    fireEvent.mouseUp(window);
+    expect(end).toHaveBeenCalledTimes(1);
+
+    fireEvent.mouseDown(strip, { button: 0 });
+    fireEvent.mouseMove(window, { buttons: 0 }); // release was swallowed by the compositor
+    expect(end).toHaveBeenCalledTimes(2);
+    fireEvent.mouseMove(window, { buttons: 0 });
+    expect(end).toHaveBeenCalledTimes(2); // only once per move
+  });
 });
 
 describe("rich text", () => {

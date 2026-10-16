@@ -3,7 +3,7 @@ members = ["core"]
 
 [package]
 name = "clipvault"
-version = "0.2.0"
+version = "0.2.1"
 description = "Private, searchable clipboard history for Linux"
 authors = ["Sujay Kumar"]
 license = "MIT"
