@@ -16,29 +16,47 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # A tag pushed again (for example after rewriting history) must not fail or replace
+      # files people have already downloaded and verified: skip if the release exists.
+      - name: Skip if this version is already released
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::Release $GITHUB_REF_NAME already exists; leaving its published files unchanged."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check the tag matches the app version
+        if: steps.existing.outputs.exists != 'true'
         run: |
           version=$(node -p "require('./package.json').version")
           test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match version $version"; exit 1; }
           grep -q "^## \[$version\]" CHANGELOG.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
 
       - name: System libraries
+        if: steps.existing.outputs.exists != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev patchelf file
 
       - uses: actions/setup-node@v5
+        if: steps.existing.outputs.exists != 'true'
         with:
           node-version: 22
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.existing.outputs.exists != 'true'
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.existing.outputs.exists != 'true'
         with:
           workspaces: src-tauri
 
       - name: Test
+        if: steps.existing.outputs.exists != 'true'
         run: |
           npm ci
           npm test
@@ -46,9 +64,11 @@ jobs:
           (cd src-tauri && cargo test --workspace --lib)
 
       - name: Build packages
+        if: steps.existing.outputs.exists != 'true'
         run: npm run tauri build
 
       - name: Collect artifacts and checksums
+        if: steps.existing.outputs.exists != 'true'
         run: |
           version=$(node -p "require('./package.json').version")
           mkdir -p out
@@ -60,6 +80,7 @@ jobs:
           printf '\n---\n**Install:** `sudo apt install ./ClipVault_%s_amd64.deb && clipvault --setup`, then log out and back in once.\n**Already using ClipVault 0.2 or newer?** Settings → Updates → Install update, or run `clipvault --update`.\nVerify downloads with `sha256sum -c SHA256SUMS`.\n' "$version" >> notes.md
 
       - name: Publish release
+        if: steps.existing.outputs.exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

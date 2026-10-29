@@ -61,7 +61,7 @@ Logging uses `RUST_LOG` (default `clipvault_core=info`). Never log clipboard con
 1. Bump the version in `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `src-tauri/core/Cargo.toml`.
 2. Add a section to `CHANGELOG.md`; its text becomes the release notes.
 3. Commit, then tag and push: `git tag v0.3.0 && git push origin main v0.3.0`.
-4. The **Release** workflow builds the `.deb` and AppImage on Ubuntu 24.04, writes `SHA256SUMS` and publishes the GitHub release. Installed copies then see it under Settings → Updates and through `clipvault --update`.
+4. The **Release** workflow builds the `.deb` and AppImage on Ubuntu 24.04, writes `SHA256SUMS` and publishes the GitHub release. If that version is already released (for example a tag pushed again after rewriting history), the workflow skips instead of failing, and the published files stay as they are. Installed copies then see it under Settings → Updates and through `clipvault --update`.
 
 To test the update flow locally, pretend to be an older version: `CLIPVAULT_FAKE_VERSION=0.0.1 clipvault --update`.
 
